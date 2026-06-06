@@ -11,7 +11,7 @@ date_iso = today.strftime('%Y-%m-%d')
 
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
-# ── TRASMAPI (requests semplice, nessun blocco) ──────────────────────────────
+# ── TRASMAPI ──────────────────────────────────────────────────────────────────
 print('Fetching Trasmapi...')
 trasmapi = {'ida': [], 'vuelta': []}
 
@@ -34,7 +34,7 @@ for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vue
     except Exception as e:
         print(f'  Trasmapi error {key}: {e}')
 
-# ── BALEARIA (Playwright) ────────────────────────────────────────────────────
+# ── BALEARIA ──────────────────────────────────────────────────────────────────
 print('Fetching Balearia...')
 balearia = {'ida': [], 'vuelta': []}
 
@@ -72,9 +72,14 @@ with sync_playwright() as p:
     page.on('response', on_response)
 
     try:
+        # Prima visita warmup
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(15)
+        time.sleep(8)
+        # Seconda visita - cattura i dati
+        page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
+                  wait_until='domcontentloaded', timeout=30000)
+        time.sleep(10)
     except Exception as e:
         print(f'  Balearia errore: {e}')
 
@@ -82,23 +87,4 @@ with sync_playwright() as p:
 
 if date_display in captured:
     data = captured[date_display]
-    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
-    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
-    print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
-else:
-    print(f'  Balearia: nessun dato per {date_display}')
-
-# ── SALVA JSON ───────────────────────────────────────────────────────────────
-result['days'][date_display] = {
-    'balearia': balearia,
-    'trasmapi': trasmapi,
-}
-
-with open('orari.json', 'w', encoding='utf-8') as f:
-    json.dump(result, f, ensure_ascii=False, indent=2)
-
-print(f'\nSalvato orari.json - {date_display}')
-print(f'  Balearia ida: {len(balearia["ida"])} corse')
-print(f'  Balearia vuelta: {len(balearia["vuelta"])} corse')
-print(f'  Trasmapi ida: {len(trasmapi["ida"])} ')
-print(f'  Trasmapi vuelta: {len(trasmapi["vuelta"])} ')
+    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horari
