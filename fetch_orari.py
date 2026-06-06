@@ -60,7 +60,8 @@ with sync_playwright() as p:
             fecha = params.get('fechaIda', [''])[0]
             try:
                 body = response.body()
-                captured[fecha] = json.loads(body.decode('utf-8'))
+                data = json.loads(body.decode('utf-8'))
+                captured[fecha] = data
                 print(f'  Balearia salvato {fecha} ({len(body)} bytes)')
             except Exception as e:
                 print(f'  Balearia parse error: {e}')
@@ -86,6 +87,7 @@ with sync_playwright() as p:
     else:
         print(f'  Balearia: nessun dato per {date_display}')
 
+    time.sleep(2)
     browser.close()
 
 result['days'][date_display] = {
