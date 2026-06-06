@@ -10,16 +10,31 @@ result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days':
 with sync_playwright() as p:
     browser = p.chromium.launch(
         headless=True,
-        args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+        args=[
+            '--no-sandbox',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-dev-shm-usage',
+            '--disable-web-security',
+            '--allow-running-insecure-content',
+        ]
     )
     context = browser.new_context(
         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         locale='es-ES',
         viewport={'width': 1280, 'height': 800},
-        extra_http_headers={'Accept-Language': 'es-ES,es;q=0.9'}
+        extra_http_headers={
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+        }
     )
     context.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en'] });
+        window.chrome = { runtime: {} };
     """)
 
     captured = {}
@@ -44,23 +59,38 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(5)
+        time.sleep(8)
     except Exception as e:
         print(f'  Errore caricamento: {e}')
 
-    # Screenshot per debug
     page.screenshot(path='screenshot.png')
-    print('Screenshot salvato')
-
-    # Stampa HTML della pagina
     html = page.content()
     print(f'HTML length: {len(html)}')
     print(f'h-btn-right presente: {"h-btn-right" in html}')
-    print(f'hexagonal presente: {"hexagonal" in html}')
+
+    if 'h-btn-right' in html:
+        print(f'Pagina caricata! Avanzo di {days_needed-1} giorni...')
+        for i in range(days_needed - 1):
+            try:
+                page.click('#h-btn-right', timeout=5000)
+                print(f'  Click giorno +{i+1}')
+                time.sleep(3)
+            except Exception as e:
+                print(f'  Click error giorno +{i+1}: {e}')
+    else:
+        print('Pagina NON caricata correttamente - Cloudflare challenge attivo')
 
     browser.close()
 
-print(f'Capturati {len(captured)} giorni')
+print(f'\nCapturati {len(captured)} giorni: {list(captured.keys())}')
+
+for fecha, data in captured.items():
+    result['days'][fecha] = data
+    ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
+    vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
+    print(f'  OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
 
 with open('orari.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
+
+print(f'Salvato orari.json con {len(result["days"])} giorni')
