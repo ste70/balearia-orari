@@ -87,4 +87,23 @@ with sync_playwright() as p:
 
 if date_display in captured:
     data = captured[date_display]
-    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horari
+    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
+    print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
+else:
+    print(f'  Balearia: nessun dato per {date_display}')
+
+# ── SALVA JSON ────────────────────────────────────────────────────────────────
+result['days'][date_display] = {
+    'balearia': balearia,
+    'trasmapi': trasmapi,
+}
+
+with open('orari.json', 'w', encoding='utf-8') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+
+print(f'\nSalvato orari.json - {date_display}')
+print(f'  Balearia ida: {len(balearia["ida"])} corse')
+print(f'  Balearia vuelta: {len(balearia["vuelta"])} corse')
+print(f'  Trasmapi ida: {len(trasmapi["ida"])}')
+print(f'  Trasmapi vuelta: {len(trasmapi["vuelta"])}')
