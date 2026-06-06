@@ -27,7 +27,7 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(5)
+        time.sleep(8)
     except Exception as e:
         print(f'  Warmup error (ignorato): {e}')
 
@@ -60,7 +60,7 @@ with sync_playwright() as p:
         except Exception as e:
             print(f'  Goto error: {e}')
 
-        time.sleep(5)
+        time.sleep(8)
 
         if 'data' in captured:
             result['days'][date] = captured['data']
@@ -71,7 +71,7 @@ with sync_playwright() as p:
             print(f'  FAIL: nessuna API intercettata per {date}')
 
         page.remove_listener('response', on_response)
-        time.sleep(3)
+        time.sleep(2)
 
     browser.close()
 
