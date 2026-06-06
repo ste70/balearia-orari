@@ -2,8 +2,8 @@ name: Fetch Orari Balearia
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # ogni 6 ore
-  workflow_dispatch:        # esecuzione manuale
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,64 +16,92 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch orari da Balearia
-        run: |
-          DATE_TODAY=$(date +'%d/%m/%Y')
-          DATES=()
-          for i in 0 1 2 3 4 5 6; do
-            DATES+=($(date -d "+$i days" +'%d/%m/%Y'))
-          done
-          
-          echo '{"lastUpdate":"'$(date -u +'%Y-%m-%d %H:%M:%S')'","days":{}}' > orari.json
-          
-          DAYS_JSON="{}"
-          for DATE in "${DATES[@]}"; do
-            echo "Fetching $DATE..."
-            ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DATE'))")
-            RESPONSE=$(curl -s -w "\n%{http_code}" \
-              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36" \
-              -H "Accept: application/json, text/plain, */*" \
-              -H "Accept-Language: es-ES,es;q=0.9" \
-              -H "Referer: https://www.balearia.com/es/horarios-ibiza-formentera" \
-              -H "Origin: https://www.balearia.com" \
-              --compressed \
-              "https://www.balearia.com/o/hexagonal/horarios?origen=IBZ&destino=FOR&fechaIda=${ENCODED}&fechaVuelta=${ENCODED}&idioma=es&origenNodo=true")
-            
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            
-            echo "HTTP $HTTP_CODE per $DATE"
-            
-            if [ "$HTTP_CODE" = "200" ]; then
-              DAYS_JSON=$(echo "$DAYS_JSON" | python3 -c "
-          import sys, json
-          days = json.load(sys.stdin)
-          days['$DATE'] = json.loads('''$BODY''')
-          print(json.dumps(days))
-          ")
-              echo "OK: $DATE"
-            else
-              echo "FAIL: $DATE"
-            fi
-            sleep 2
-          done
-          
-          python3 -c "
-          import json
-          from datetime import datetime
-          result = {
-            'lastUpdate': '$(date -u +"%Y-%m-%d %H:%M:%S")',
-            'days': $DAYS_JSON
-          }
-          with open('orari.json', 'w') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-          print('Salvato orari.json')
-          "
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Deploy to GitHub Pages
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+
+      - name: Fetch orari con Playwright
+        run: |
+          python3 << 'PYEOF'
+          import json, time, re
+          from datetime import datetime, timedelta
+          from playwright.sync_api import sync_playwright
+
+          dates = [(datetime.today() + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(7)]
+          result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              context = browser.new_context(
+                  user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                  locale='es-ES',
+                  viewport={'width': 1280, 'height': 800},
+              )
+              page = context.new_page()
+
+              # Visita homepage prima per cookie
+              print('Visiting homepage...')
+              page.goto('https://www.balearia.com/es/horarios-ibiza-formentera', timeout=30000)
+              time.sleep(3)
+
+              for date in dates:
+                  print(f'Fetching {date}...')
+                  try:
+                      # Intercetta risposta API
+                      api_data = {}
+                      def handle_response(response):
+                          if 'hexagonal/horarios' in response.url and response.status == 200:
+                              try:
+                                  api_data['data'] = response.json()
+                              except:
+                                  pass
+
+                      page.on('response', handle_response)
+
+                      url = f'https://www.balearia.com/o/hexagonal/horarios?origen=IBZ&destino=FOR&fechaIda={date}&fechaVuelta={date}&idioma=es&origenNodo=true'
+                      response = page.request.get(
+                          url,
+                          headers={
+                              'Accept': 'application/json, text/plain, */*',
+                              'Referer': 'https://www.balearia.com/es/horarios-ibiza-formentera',
+                              'Origin': 'https://www.balearia.com',
+                          }
+                      )
+
+                      print(f'  HTTP {response.status} per {date}')
+
+                      if response.status == 200:
+                          data = response.json()
+                          result['days'][date] = data
+                          ida = len(data.get('horariosIda', [{}])[0].get('horarios', []) if data.get('horariosIda') else [])
+                          print(f'  OK: {date} - {ida} corse andata')
+                      else:
+                          print(f'  FAIL: {date}')
+
+                  except Exception as e:
+                      print(f'  ERROR {date}: {e}')
+
+                  time.sleep(2)
+
+              browser.close()
+
+          with open('orari.json', 'w', encoding='utf-8') as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+
+          print(f'Salvato orari.json con {len(result["days"])} giorni')
+          PYEOF
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
 
-      - name: Deploy Pages
+      - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
