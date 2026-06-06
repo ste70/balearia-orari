@@ -11,7 +11,6 @@ date_iso = today.strftime('%Y-%m-%d')
 
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
-# ── TRASMAPI ──────────────────────────────────────────────────────────────────
 print('Fetching Trasmapi...')
 trasmapi = {'ida': [], 'vuelta': []}
 
@@ -34,7 +33,6 @@ for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vue
     except Exception as e:
         print(f'  Trasmapi error {key}: {e}')
 
-# ── BALEARIA (struttura identica a quella che funzionava) ─────────────────────
 print('Fetching Balearia...')
 captured = {}
 
@@ -72,17 +70,19 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
+        time.sleep(8)
+        page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
+                  wait_until='domcontentloaded', timeout=30000)
         time.sleep(10)
     except Exception as e:
         print(f'  Errore: {e}')
 
     browser.close()
 
-# ── COMBINA E SALVA ───────────────────────────────────────────────────────────
 balearia = {'ida': [], 'vuelta': []}
 
 for fecha, data in captured.items():
-    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+    balearia['ida'] = (data.get('horariosIda') or [{}])[0].get('horarios', [])
     balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
     print(f'  Balearia OK: {fecha} - {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
 
