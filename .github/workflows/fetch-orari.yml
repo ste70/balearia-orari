@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: true
+      - name: Verifica file
+        run: cat fetch_orari.py
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
