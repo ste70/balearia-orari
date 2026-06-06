@@ -74,7 +74,7 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(10)
+        time.sleep(15)
     except Exception as e:
         print(f'  Balearia errore: {e}')
 
