@@ -44,20 +44,15 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(4)
+        time.sleep(5)
     except Exception as e:
         print(f'  Errore caricamento: {e}')
 
-    print(f'Pagina caricata, oggi catturato. Avanzo di {days_needed-1} giorni...')
+    print(f'Pagina caricata. Avanzo di {days_needed-1} giorni...')
 
     for i in range(days_needed - 1):
         try:
-            # Clicca freccia avanti >
-            next_btn = page.locator('button:has-text(">"), [aria-label*="siguiente"], [aria-label*="next"]').first
-            if not next_btn.count():
-                # Prova con SVG o altri selettori
-                next_btn = page.locator('.date-nav button:last-child, .calendar-nav button:last-child').first
-            next_btn.click(timeout=5000)
+            page.click('#h-btn-right', timeout=5000)
             print(f'  Click giorno +{i+1}')
             time.sleep(3)
         except Exception as e:
