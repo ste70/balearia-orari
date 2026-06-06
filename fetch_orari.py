@@ -4,7 +4,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 
-dates = [(datetime.today() + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(7)]
+dates = [(datetime.today() + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(8)]
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
 with sync_playwright() as p:
@@ -27,7 +27,7 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(3)
+        time.sleep(5)
     except Exception as e:
         print(f'  Warmup error (ignorato): {e}')
 
