@@ -11,6 +11,7 @@ date_iso = today.strftime('%Y-%m-%d')
 
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
+# ── TRASMAPI ──────────────────────────────────────────────────────────────────
 print('Fetching Trasmapi...')
 trasmapi = {'ida': [], 'vuelta': []}
 
@@ -33,8 +34,8 @@ for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vue
     except Exception as e:
         print(f'  Trasmapi error {key}: {e}')
 
+# ── BALEARIA (struttura identica a quella che funzionava) ─────────────────────
 print('Fetching Balearia...')
-balearia = {'ida': [], 'vuelta': []}
 captured = {}
 
 with sync_playwright() as p:
@@ -60,11 +61,10 @@ with sync_playwright() as p:
             fecha = params.get('fechaIda', [''])[0]
             try:
                 body = response.body()
-                data = json.loads(body.decode('utf-8'))
-                captured[fecha] = data
-                print(f'  Balearia salvato {fecha} ({len(body)} bytes)')
+                captured[fecha] = json.loads(body.decode('utf-8'))
+                print(f'  Salvato {fecha} ({len(body)} bytes)')
             except Exception as e:
-                print(f'  Balearia parse error: {e}')
+                print(f'  Parse error: {e}')
 
     page = context.new_page()
     page.on('response', on_response)
@@ -72,23 +72,19 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(8)
-        page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
-                  wait_until='domcontentloaded', timeout=30000)
         time.sleep(10)
     except Exception as e:
-        print(f'  Balearia errore: {e}')
+        print(f'  Errore: {e}')
 
-    if date_display in captured:
-        data = captured[date_display]
-        balearia['ida'] = (data.get('horariosIda') or [{}])[0].get('horarios', [])
-        balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
-        print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
-    else:
-        print(f'  Balearia: nessun dato per {date_display}')
-
-    time.sleep(2)
     browser.close()
+
+# ── COMBINA E SALVA ───────────────────────────────────────────────────────────
+balearia = {'ida': [], 'vuelta': []}
+
+for fecha, data in captured.items():
+    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
+    print(f'  Balearia OK: {fecha} - {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
 
 result['days'][date_display] = {
     'balearia': balearia,
