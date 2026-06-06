@@ -10,30 +10,17 @@ result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days':
 with sync_playwright() as p:
     browser = p.chromium.launch(
         headless=True,
-        args=[
-            '--no-sandbox',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-dev-shm-usage',
-            '--disable-web-security',
-            '--allow-running-insecure-content',
-        ]
+        args=['--no-sandbox', '--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
     )
     context = browser.new_context(
         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         locale='es-ES',
         viewport={'width': 1280, 'height': 800},
-        extra_http_headers={
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-        }
+        extra_http_headers={'Accept-Language': 'es-ES,es;q=0.9'}
     )
     context.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en'] });
         window.chrome = { runtime: {} };
     """)
 
@@ -59,26 +46,52 @@ with sync_playwright() as p:
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(8)
+        time.sleep(5)
     except Exception as e:
         print(f'  Errore caricamento: {e}')
 
-    page.screenshot(path='screenshot.png')
-    html = page.content()
-    print(f'HTML length: {len(html)}')
-    print(f'h-btn-right presente: {"h-btn-right" in html}')
+    # Chiudi popup cookie Didomi
+    print('Chiusura popup cookie...')
+    try:
+        page.evaluate("""
+            const didomi = document.getElementById('didomi-host');
+            if (didomi) didomi.remove();
+            const popup = document.getElementById('didomi-popup');
+            if (popup) popup.remove();
+            const backdrop = document.querySelector('.didomi-popup-backdrop');
+            if (backdrop) backdrop.remove();
+        """)
+        print('  Popup rimosso via JS')
+        time.sleep(1)
+    except Exception as e:
+        print(f'  Errore rimozione popup: {e}')
 
-    if 'h-btn-right' in html:
-        print(f'Pagina caricata! Avanzo di {days_needed-1} giorni...')
-        for i in range(days_needed - 1):
+    # Prova anche click su pulsante accetta
+    try:
+        accept_btn = page.locator('#didomi-notice-agree-button, button[id*="agree"], button[id*="accept"]').first
+        if accept_btn.count():
+            accept_btn.click(timeout=3000)
+            print('  Clicked accetta cookie')
+            time.sleep(2)
+    except Exception as e:
+        print(f'  Nessun pulsante accetta: {e}')
+
+    print(f'Avanzo di {days_needed-1} giorni...')
+    for i in range(days_needed - 1):
+        try:
+            page.click('#h-btn-right', timeout=5000)
+            print(f'  Click giorno +{i+1}')
+            time.sleep(3)
+        except Exception as e:
+            print(f'  Click error giorno +{i+1}: {e}')
+            # Riprova rimuovendo popup
             try:
-                page.click('#h-btn-right', timeout=5000)
-                print(f'  Click giorno +{i+1}')
+                page.evaluate("document.getElementById('didomi-host')?.remove()")
+                page.click('#h-btn-right', timeout=3000)
+                print(f'  Click giorno +{i+1} (dopo cleanup)')
                 time.sleep(3)
-            except Exception as e:
-                print(f'  Click error giorno +{i+1}: {e}')
-    else:
-        print('Pagina NON caricata correttamente - Cloudflare challenge attivo')
+            except Exception as e2:
+                print(f'  Click fallito definitivamente: {e2}')
 
     browser.close()
 
