@@ -83,15 +83,15 @@ with sync_playwright() as p:
     except Exception as e:
         print(f'  Balearia errore: {e}')
 
-    browser.close()
-
 if date_display in captured:
-    data = captured[date_display]
-    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
-    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
-    print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
-else:
-    print(f'  Balearia: nessun dato per {date_display}')
+        data = captured[date_display]
+        balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+        balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
+        print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
+    else:
+        print(f'  Balearia: nessun dato per {date_display}')
+
+    browser.close()
 
 # ── SALVA JSON ────────────────────────────────────────────────────────────────
 result['days'][date_display] = {
