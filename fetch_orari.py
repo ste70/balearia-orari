@@ -35,20 +35,21 @@ with sync_playwright() as p:
         print(f'Fetching {date}...')
         captured = {}
 
-        def on_response(response):
-            if 'hexagonal/horarios' in response.url and response.status == 200:
-                parsed = urllib.parse.urlparse(response.url)
+        def handle_route(route):
+            response = route.fetch()
+            if response.status == 200:
+                parsed = urllib.parse.urlparse(route.request.url)
                 params = urllib.parse.parse_qs(parsed.query)
                 fecha = params.get('fechaIda', [''])[0]
                 print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
                 try:
-                    body = response.text()
-                    captured['data'] = json.loads(body)
+                    captured['data'] = json.loads(response.text())
                     captured['fecha'] = fecha
                 except Exception as e:
                     print(f'  Parse error: {e}')
+            route.fulfill(response=response)
 
-        page.on('response', on_response)
+        context.route('**/hexagonal/horarios**', handle_route)
 
         d, m, y = date.split('/')
         url = f'https://www.balearia.com/es/horarios-ibiza-formentera?fechaIda={y}-{m}-{d}'
@@ -69,7 +70,7 @@ with sync_playwright() as p:
         else:
             print(f'  FAIL: nessuna API intercettata per {date}')
 
-        page.remove_listener('response', on_response)
+        context.unroute('**/hexagonal/horarios**', handle_route)
         time.sleep(3)
 
     browser.close()
