@@ -1,72 +1,39 @@
-<?php
-/**
- * fetch-orari.php
- * Scarica gli orari da Balearia per oggi e domani e salva orari.json
- * Da eseguire come cron job ogni ora:
- *   php /var/www/vhosts/yourformentera.es/httpdocs/api/fetch-orari.php
- */
+name: Fetch Orari Balearia
 
-$outputFile = __DIR__ . '/orari.json';
-$dates = [];
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
-// Oggi e i prossimi 6 giorni
-for ($i = 0; $i < 7; $i++) {
-    $dates[] = date('d/m/Y', strtotime("+$i days"));
-}
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
-function fetchDay($date) {
-    $url = "https://www.balearia.com/o/hexagonal/horarios?"
-         . "origen=IBZ&destino=FOR"
-         . "&fechaIda=" . urlencode($date)
-         . "&fechaVuelta=" . urlencode($date)
-         . "&idioma=es&origenNodo=true";
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_HTTPHEADER     => [
-            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
-            'Accept: application/json, text/plain, */*',
-            'Accept-Language: es-ES,es;q=0.9',
-            'Referer: https://www.balearia.com/',
-            'Origin: https://www.balearia.com',
-        ],
-        CURLOPT_COOKIEFILE     => '',
-        CURLOPT_COOKIEJAR      => '',
-    ]);
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
 
-    if ($response === false || $httpCode !== 200) {
-        return null;
-    }
+      - name: Fetch orari con Playwright
+        run: python3 fetch_orari.py
 
-    $data = json_decode($response, true);
-    return $data ?: null;
-}
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
 
-$result = [
-    'lastUpdate' => date('Y-m-d H:i:s'),
-    'days'       => [],
-];
-
-foreach ($dates as $date) {
-    $data = fetchDay($date);
-    if ($data) {
-        $result['days'][$date] = $data;
-        echo "OK: $date\n";
-    } else {
-        echo "FAIL: $date\n";
-    }
-    sleep(2); // pausa tra le richieste
-}
-
-file_put_contents($outputFile, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-echo "Salvato: $outputFile\n";
-echo "Aggiornato: " . $result['lastUpdate'] . "\n";
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
