@@ -1,10 +1,42 @@
 import json
 import time
 import urllib.parse
+import requests
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
+today = datetime.today()
+date_display = today.strftime('%d/%m/%Y')
+date_iso = today.strftime('%Y-%m-%d')
+
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
+
+# ── TRASMAPI (requests semplice, nessun blocco) ──────────────────────────────
+print('Fetching Trasmapi...')
+trasmapi = {'ida': [], 'vuelta': []}
+
+for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vuelta')]:
+    try:
+        r = requests.post(
+            f'https://www.trasmapi.com/lib/php/{endpoint}',
+            data={'fecha': date_iso, 'ruta': 'if'},
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+                'Referer': 'https://www.trasmapi.com/horarios',
+                'Origin': 'https://www.trasmapi.com',
+            },
+            timeout=15
+        )
+        print(f'  Trasmapi {key}: HTTP {r.status_code}')
+        if r.status_code == 200:
+            trasmapi[key] = r.json()
+            print(f'  OK: {len(str(trasmapi[key]))} bytes')
+    except Exception as e:
+        print(f'  Trasmapi error {key}: {e}')
+
+# ── BALEARIA (Playwright) ────────────────────────────────────────────────────
+print('Fetching Balearia...')
+balearia = {'ida': [], 'vuelta': []}
 
 with sync_playwright() as p:
     browser = p.chromium.launch(
@@ -32,30 +64,41 @@ with sync_playwright() as p:
             try:
                 body = response.body()
                 captured[fecha] = json.loads(body.decode('utf-8'))
-                print(f'Salvato {fecha} ({len(body)} bytes)')
+                print(f'  Balearia salvato {fecha} ({len(body)} bytes)')
             except Exception as e:
-                print(f'Parse error: {e}')
+                print(f'  Balearia parse error: {e}')
 
     page = context.new_page()
     page.on('response', on_response)
 
-    print('Caricamento pagina...')
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
         time.sleep(10)
     except Exception as e:
-        print(f'Errore: {e}')
+        print(f'  Balearia errore: {e}')
 
     browser.close()
 
-for fecha, data in captured.items():
-    result['days'][fecha] = data
-    ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
-    vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
-    print(f'OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
+if date_display in captured:
+    data = captured[date_display]
+    balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
+    print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
+else:
+    print(f'  Balearia: nessun dato per {date_display}')
+
+# ── SALVA JSON ───────────────────────────────────────────────────────────────
+result['days'][date_display] = {
+    'balearia': balearia,
+    'trasmapi': trasmapi,
+}
 
 with open('orari.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
-print(f'Salvato orari.json con {len(result["days"])} giorni')
+print(f'\nSalvato orari.json - {date_display}')
+print(f'  Balearia ida: {len(balearia["ida"])} corse')
+print(f'  Balearia vuelta: {len(balearia["vuelta"])} corse')
+print(f'  Trasmapi ida: {len(trasmapi["ida"])} ')
+print(f'  Trasmapi vuelta: {len(trasmapi["vuelta"])} ')
