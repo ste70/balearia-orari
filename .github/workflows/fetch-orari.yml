@@ -30,7 +30,7 @@ jobs:
       - name: Fetch orari con Playwright
         run: |
           python3 << 'PYEOF'
-          import json, time, re
+          import json, time
           from datetime import datetime, timedelta
           from playwright.sync_api import sync_playwright
 
@@ -38,56 +38,61 @@ jobs:
           result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
           with sync_playwright() as p:
-              browser = p.chromium.launch(headless=True)
+              browser = p.chromium.launch(
+                  headless=True,
+                  args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+              )
               context = browser.new_context(
                   user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                   locale='es-ES',
                   viewport={'width': 1280, 'height': 800},
+                  extra_http_headers={
+                      'Accept-Language': 'es-ES,es;q=0.9',
+                  }
               )
-              page = context.new_page()
 
-              # Visita homepage prima per cookie
-              print('Visiting homepage...')
-              page.goto('https://www.balearia.com/es/horarios-ibiza-formentera', timeout=30000)
-              time.sleep(3)
+              # Rimuovi flag webdriver
+              context.add_init_script("""
+                  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+              """)
+
+              page = context.new_page()
 
               for date in dates:
                   print(f'Fetching {date}...')
-                  try:
-                      # Intercetta risposta API
-                      api_data = {}
-                      def handle_response(response):
-                          if 'hexagonal/horarios' in response.url and response.status == 200:
+                  captured = {}
+
+                  def on_response(response):
+                      if 'hexagonal/horarios' in response.url:
+                          print(f'  Intercettata API: {response.url} -> HTTP {response.status}')
+                          if response.status == 200:
                               try:
-                                  api_data['data'] = response.json()
-                              except:
-                                  pass
+                                  captured['data'] = response.json()
+                              except Exception as e:
+                                  print(f'  JSON parse error: {e}')
 
-                      page.on('response', handle_response)
+                  page.on('response', on_response)
 
-                      url = f'https://www.balearia.com/o/hexagonal/horarios?origen=IBZ&destino=FOR&fechaIda={date}&fechaVuelta={date}&idioma=es&origenNodo=true'
-                      response = page.request.get(
-                          url,
-                          headers={
-                              'Accept': 'application/json, text/plain, */*',
-                              'Referer': 'https://www.balearia.com/es/horarios-ibiza-formentera',
-                              'Origin': 'https://www.balearia.com',
-                          }
-                      )
+                  # Naviga la pagina reale con la data nel URL
+                  d, m, y = date.split('/')
+                  url = f'https://www.balearia.com/es/horarios-ibiza-formentera?fechaIda={y}-{m}-{d}'
+                  print(f'  Navigating: {url}')
 
-                      print(f'  HTTP {response.status} per {date}')
-
-                      if response.status == 200:
-                          data = response.json()
-                          result['days'][date] = data
-                          ida = len(data.get('horariosIda', [{}])[0].get('horarios', []) if data.get('horariosIda') else [])
-                          print(f'  OK: {date} - {ida} corse andata')
-                      else:
-                          print(f'  FAIL: {date}')
-
+                  try:
+                      page.goto(url, wait_until='networkidle', timeout=45000)
                   except Exception as e:
-                      print(f'  ERROR {date}: {e}')
+                      print(f'  Timeout/error: {e}')
 
+                  time.sleep(4)
+
+                  if 'data' in captured:
+                      result['days'][date] = captured['data']
+                      ida = len((captured['data'].get('horariosIda') or [{}])[0].get('horarios', []))
+                      print(f'  OK: {date} - {ida} corse andata')
+                  else:
+                      print(f'  FAIL: nessuna API intercettata per {date}')
+
+                  page.remove_listener('response', on_response)
                   time.sleep(2)
 
               browser.close()
@@ -95,7 +100,8 @@ jobs:
           with open('orari.json', 'w', encoding='utf-8') as f:
               json.dump(result, f, ensure_ascii=False, indent=2)
 
-          print(f'Salvato orari.json con {len(result["days"])} giorni')
+          giorni = len(result['days'])
+          print(f'Salvato orari.json con {giorni} giorni')
           PYEOF
 
       - name: Upload Pages artifact
