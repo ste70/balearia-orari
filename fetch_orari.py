@@ -4,7 +4,6 @@ import urllib.parse
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
-days_needed = 7
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
 with sync_playwright() as p:
@@ -20,7 +19,6 @@ with sync_playwright() as p:
     )
     context.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
         window.chrome = { runtime: {} };
     """)
 
@@ -31,13 +29,12 @@ with sync_playwright() as p:
             parsed = urllib.parse.urlparse(response.url)
             params = urllib.parse.parse_qs(parsed.query)
             fecha = params.get('fechaIda', [''])[0]
-            print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
             try:
                 body = response.body()
                 captured[fecha] = json.loads(body.decode('utf-8'))
-                print(f'  Salvato {fecha} ({len(body)} bytes)')
+                print(f'Salvato {fecha} ({len(body)} bytes)')
             except Exception as e:
-                print(f'  Parse error: {e}')
+                print(f'Parse error: {e}')
 
     page = context.new_page()
     page.on('response', on_response)
@@ -48,60 +45,15 @@ with sync_playwright() as p:
                   wait_until='domcontentloaded', timeout=30000)
         time.sleep(5)
     except Exception as e:
-        print(f'  Errore caricamento: {e}')
-
-    # Chiudi popup cookie Didomi
-    print('Chiusura popup cookie...')
-    try:
-        page.evaluate("""
-            const didomi = document.getElementById('didomi-host');
-            if (didomi) didomi.remove();
-            const popup = document.getElementById('didomi-popup');
-            if (popup) popup.remove();
-            const backdrop = document.querySelector('.didomi-popup-backdrop');
-            if (backdrop) backdrop.remove();
-        """)
-        print('  Popup rimosso via JS')
-        time.sleep(1)
-    except Exception as e:
-        print(f'  Errore rimozione popup: {e}')
-
-    # Prova anche click su pulsante accetta
-    try:
-        accept_btn = page.locator('#didomi-notice-agree-button, button[id*="agree"], button[id*="accept"]').first
-        if accept_btn.count():
-            accept_btn.click(timeout=3000)
-            print('  Clicked accetta cookie')
-            time.sleep(2)
-    except Exception as e:
-        print(f'  Nessun pulsante accetta: {e}')
-
-    print(f'Avanzo di {days_needed-1} giorni...')
-    for i in range(days_needed - 1):
-        try:
-            page.click('#h-btn-right', timeout=5000)
-            print(f'  Click giorno +{i+1}')
-            time.sleep(3)
-        except Exception as e:
-            print(f'  Click error giorno +{i+1}: {e}')
-            # Riprova rimuovendo popup
-            try:
-                page.evaluate("document.getElementById('didomi-host')?.remove()")
-                page.click('#h-btn-right', timeout=3000)
-                print(f'  Click giorno +{i+1} (dopo cleanup)')
-                time.sleep(3)
-            except Exception as e2:
-                print(f'  Click fallito definitivamente: {e2}')
+        print(f'Errore: {e}')
 
     browser.close()
-
-print(f'\nCapturati {len(captured)} giorni: {list(captured.keys())}')
 
 for fecha, data in captured.items():
     result['days'][fecha] = data
     ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
     vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
-    print(f'  OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
+    print(f'OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
 
 with open('orari.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
