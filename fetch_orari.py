@@ -34,7 +34,7 @@ for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vue
         print(f'  Trasmapi error {key}: {e}')
 
 print('Fetching Balearia...')
-captured = {}
+balearia = {'ida': [], 'vuelta': []}
 
 with sync_playwright() as p:
     browser = p.chromium.launch(
@@ -52,39 +52,33 @@ with sync_playwright() as p:
         window.chrome = { runtime: {} };
     """)
 
-    def on_response(response):
-        if 'hexagonal/horarios' in response.url and response.status == 200:
-            parsed = urllib.parse.urlparse(response.url)
-            params = urllib.parse.parse_qs(parsed.query)
-            fecha = params.get('fechaIda', [''])[0]
-            try:
-                body = response.body()
-                captured[fecha] = json.loads(body.decode('utf-8'))
-                print(f'  Salvato {fecha} ({len(body)} bytes)')
-            except Exception as e:
-                print(f'  Parse error: {e}')
-
     page = context.new_page()
-    page.on('response', on_response)
 
     try:
+        # Warmup
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
-        time.sleep(8)
-        page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
-                  wait_until='domcontentloaded', timeout=30000)
-        time.sleep(10)
+        time.sleep(5)
+
+        # Seconda visita con expect_response sincrono
+        with page.expect_response(
+            lambda r: 'hexagonal/horarios' in r.url and r.status == 200,
+            timeout=20000
+        ) as response_info:
+            page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
+                      wait_until='domcontentloaded', timeout=30000)
+
+        response = response_info.value
+        body = response.body()
+        data = json.loads(body.decode('utf-8'))
+        balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+        balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
+        print(f'  Balearia OK: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
+
     except Exception as e:
-        print(f'  Errore: {e}')
+        print(f'  Balearia errore: {e}')
 
     browser.close()
-
-balearia = {'ida': [], 'vuelta': []}
-
-for fecha, data in captured.items():
-    balearia['ida'] = (data.get('horariosIda') or [{}])[0].get('horarios', [])
-    balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
-    print(f'  Balearia OK: {fecha} - {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
 
 result['days'][date_display] = {
     'balearia': balearia,
