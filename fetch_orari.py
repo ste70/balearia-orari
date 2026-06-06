@@ -1,7 +1,7 @@
 import json
 import time
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 days_needed = 7
@@ -48,27 +48,19 @@ with sync_playwright() as p:
     except Exception as e:
         print(f'  Errore caricamento: {e}')
 
-    print(f'Pagina caricata. Avanzo di {days_needed-1} giorni...')
+    # Screenshot per debug
+    page.screenshot(path='screenshot.png')
+    print('Screenshot salvato')
 
-    for i in range(days_needed - 1):
-        try:
-            page.click('#h-btn-right', timeout=5000)
-            print(f'  Click giorno +{i+1}')
-            time.sleep(3)
-        except Exception as e:
-            print(f'  Click error giorno +{i+1}: {e}')
+    # Stampa HTML della pagina
+    html = page.content()
+    print(f'HTML length: {len(html)}')
+    print(f'h-btn-right presente: {"h-btn-right" in html}')
+    print(f'hexagonal presente: {"hexagonal" in html}')
 
     browser.close()
 
-print(f'\nCapturati {len(captured)} giorni: {list(captured.keys())}')
-
-for fecha, data in captured.items():
-    result['days'][fecha] = data
-    ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
-    vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
-    print(f'  OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
+print(f'Capturati {len(captured)} giorni')
 
 with open('orari.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
-
-print(f'Salvato orari.json con {len(result["days"])} giorni')
