@@ -34,3 +34,8 @@ jobs:
           path: '.'
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        - name: Install dependencies
+        run: |
+          pip install playwright requests
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
