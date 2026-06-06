@@ -42,10 +42,11 @@ with sync_playwright() as p:
                 fecha = params.get('fechaIda', [''])[0]
                 print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
                 try:
-                    captured['data'] = response.json()
+                    body = response.text()
+                    captured['data'] = json.loads(body)
                     captured['fecha'] = fecha
                 except Exception as e:
-                    print(f'  JSON parse error: {e}')
+                    print(f'  Parse error: {e}')
 
         page.on('response', on_response)
 
@@ -55,14 +56,10 @@ with sync_playwright() as p:
 
         try:
             page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            page.wait_for_response(
-                lambda r: 'hexagonal/horarios' in r.url,
-                timeout=15000
-            )
         except Exception as e:
-            print(f'  Wait error: {e}')
+            print(f'  Goto error: {e}')
 
-        time.sleep(2)
+        time.sleep(5)
 
         if 'data' in captured:
             result['days'][date] = captured['data']
