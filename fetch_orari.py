@@ -23,7 +23,6 @@ with sync_playwright() as p:
     """)
     page = context.new_page()
 
-    # Warmup
     print('Warmup...')
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
