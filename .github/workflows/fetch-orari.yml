@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+            - name: Debug
+        run: |
+          echo "Commit: $(git log -1 --format=%H)"
+          ls -la
 
       - name: Setup Python
         uses: actions/setup-python@v5
