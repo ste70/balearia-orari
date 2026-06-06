@@ -11,7 +11,6 @@ date_iso = today.strftime('%Y-%m-%d')
 
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
-# ── TRASMAPI ──────────────────────────────────────────────────────────────────
 print('Fetching Trasmapi...')
 trasmapi = {'ida': [], 'vuelta': []}
 
@@ -34,9 +33,9 @@ for endpoint, key in [('ws_horariosida.php', 'ida'), ('ws_horariosvue.php', 'vue
     except Exception as e:
         print(f'  Trasmapi error {key}: {e}')
 
-# ── BALEARIA ──────────────────────────────────────────────────────────────────
 print('Fetching Balearia...')
 balearia = {'ida': [], 'vuelta': []}
+captured = {}
 
 with sync_playwright() as p:
     browser = p.chromium.launch(
@@ -54,8 +53,6 @@ with sync_playwright() as p:
         window.chrome = { runtime: {} };
     """)
 
-    captured = {}
-
     def on_response(response):
         if 'hexagonal/horarios' in response.url and response.status == 200:
             parsed = urllib.parse.urlparse(response.url)
@@ -72,20 +69,18 @@ with sync_playwright() as p:
     page.on('response', on_response)
 
     try:
-        # Prima visita warmup
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
         time.sleep(8)
-        # Seconda visita - cattura i dati
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
         time.sleep(10)
     except Exception as e:
         print(f'  Balearia errore: {e}')
 
-if date_display in captured:
+    if date_display in captured:
         data = captured[date_display]
-        balearia['ida']    = (data.get('horariosIda') or [{}])[0].get('horarios', [])
+        balearia['ida'] = (data.get('horariosIda') or [{}])[0].get('horarios', [])
         balearia['vuelta'] = (data.get('horariosVuelta') or [{}])[0].get('horarios', [])
         print(f'  Balearia: {len(balearia["ida"])} ida, {len(balearia["vuelta"])} vuelta')
     else:
@@ -93,7 +88,6 @@ if date_display in captured:
 
     browser.close()
 
-# ── SALVA JSON ────────────────────────────────────────────────────────────────
 result['days'][date_display] = {
     'balearia': balearia,
     'trasmapi': trasmapi,
