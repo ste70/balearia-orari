@@ -26,8 +26,8 @@ with sync_playwright() as p:
     print('Warmup...')
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
-                  wait_until='commit', timeout=15000)
-        time.sleep(4)
+                  wait_until='domcontentloaded', timeout=30000)
+        time.sleep(5)
     except Exception as e:
         print(f'  Warmup error (ignorato): {e}')
 
@@ -35,39 +35,32 @@ with sync_playwright() as p:
         print(f'Fetching {date}...')
         captured = {}
 
-        def handle_route(route):
-            try:
-                response = route.fetch(timeout=10000)
-                if response.status == 200:
-                    parsed = urllib.parse.urlparse(route.request.url)
-                    params = urllib.parse.parse_qs(parsed.query)
-                    fecha = params.get('fechaIda', [''])[0]
-                    print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
-                    try:
-                        captured['data'] = json.loads(response.text())
-                        captured['fecha'] = fecha
-                    except Exception as e:
-                        print(f'  Parse error: {e}')
-                route.fulfill(response=response)
-            except Exception as e:
-                print(f'  Route error: {e}')
+        def on_response(response):
+            if 'hexagonal/horarios' in response.url and response.status == 200:
+                parsed = urllib.parse.urlparse(response.url)
+                params = urllib.parse.parse_qs(parsed.query)
+                fecha = params.get('fechaIda', [''])[0]
+                print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
                 try:
-                    route.continue_()
-                except:
-                    pass
+                    body = response.body()
+                    captured['data'] = json.loads(body.decode('utf-8'))
+                    captured['fecha'] = fecha
+                    print(f'  Body OK: {len(body)} bytes')
+                except Exception as e:
+                    print(f'  Parse error: {e}')
 
-        context.route('**/hexagonal/horarios**', handle_route)
+        page.on('response', on_response)
 
         d, m, y = date.split('/')
         url = f'https://www.balearia.com/es/horarios-ibiza-formentera?fechaIda={y}-{m}-{d}'
         print(f'  Navigating: {url}')
 
         try:
-            page.goto(url, wait_until='commit', timeout=15000)
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
         except Exception as e:
             print(f'  Goto error: {e}')
 
-        time.sleep(6)
+        time.sleep(5)
 
         if 'data' in captured:
             result['days'][date] = captured['data']
@@ -77,7 +70,13 @@ with sync_playwright() as p:
         else:
             print(f'  FAIL: nessuna API intercettata per {date}')
 
-        context.unroute('**/hexagonal/horarios**', handle_route)
-        time.sleep(2)
+        page.remove_listener('response', on_response)
+        time.sleep(3)
 
-    browser.c
+    browser.close()
+
+with open('orari.json', 'w', encoding='utf-8') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+
+giorni = len(result['days'])
+print(f'\nSalvato orari.json con {giorni} giorni')
