@@ -1,0 +1,79 @@
+name: Fetch Orari Balearia
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # ogni 6 ore
+  workflow_dispatch:        # esecuzione manuale
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch orari da Balearia
+        run: |
+          DATE_TODAY=$(date +'%d/%m/%Y')
+          DATES=()
+          for i in 0 1 2 3 4 5 6; do
+            DATES+=($(date -d "+$i days" +'%d/%m/%Y'))
+          done
+          
+          echo '{"lastUpdate":"'$(date -u +'%Y-%m-%d %H:%M:%S')'","days":{}}' > orari.json
+          
+          DAYS_JSON="{}"
+          for DATE in "${DATES[@]}"; do
+            echo "Fetching $DATE..."
+            ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DATE'))")
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36" \
+              -H "Accept: application/json, text/plain, */*" \
+              -H "Accept-Language: es-ES,es;q=0.9" \
+              -H "Referer: https://www.balearia.com/es/horarios-ibiza-formentera" \
+              -H "Origin: https://www.balearia.com" \
+              --compressed \
+              "https://www.balearia.com/o/hexagonal/horarios?origen=IBZ&destino=FOR&fechaIda=${ENCODED}&fechaVuelta=${ENCODED}&idioma=es&origenNodo=true")
+            
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            
+            echo "HTTP $HTTP_CODE per $DATE"
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              DAYS_JSON=$(echo "$DAYS_JSON" | python3 -c "
+          import sys, json
+          days = json.load(sys.stdin)
+          days['$DATE'] = json.loads('''$BODY''')
+          print(json.dumps(days))
+          ")
+              echo "OK: $DATE"
+            else
+              echo "FAIL: $DATE"
+            fi
+            sleep 2
+          done
+          
+          python3 -c "
+          import json
+          from datetime import datetime
+          result = {
+            'lastUpdate': '$(date -u +"%Y-%m-%d %H:%M:%S")',
+            'days': $DAYS_JSON
+          }
+          with open('orari.json', 'w') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+          print('Salvato orari.json')
+          "
+
+      - name: Deploy to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy Pages
+        uses: actions/deploy-pages@v4
