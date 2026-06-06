@@ -4,7 +4,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 
-dates = [(datetime.today() + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(8)]
+days_needed = 7
 result = {'lastUpdate': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'days': {}}
 
 with sync_playwright() as p:
@@ -22,7 +22,7 @@ with sync_playwright() as p:
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     """)
 
-    all_captured = {}
+    captured = {}
 
     def on_response(response):
         if 'hexagonal/horarios' in response.url and response.status == 200:
@@ -32,49 +32,48 @@ with sync_playwright() as p:
             print(f'  Intercettata API fecha={fecha} -> HTTP {response.status}')
             try:
                 body = response.body()
-                data = json.loads(body.decode('utf-8'))
-                all_captured[fecha] = data
-                print(f'  Salvato fecha={fecha} ({len(body)} bytes)')
+                captured[fecha] = json.loads(body.decode('utf-8'))
+                print(f'  Salvato {fecha} ({len(body)} bytes)')
             except Exception as e:
                 print(f'  Parse error: {e}')
 
     page = context.new_page()
     page.on('response', on_response)
 
-    print('Warmup...')
+    print('Caricamento pagina...')
     try:
         page.goto('https://www.balearia.com/es/horarios-ibiza-formentera',
                   wait_until='domcontentloaded', timeout=30000)
         time.sleep(4)
     except Exception as e:
-        print(f'  Warmup error (ignorato): {e}')
+        print(f'  Errore caricamento: {e}')
 
-    for date in dates:
-        print(f'Fetching {date}...')
-        d, m, y = date.split('/')
-        url = f'https://www.balearia.com/es/horarios-ibiza-formentera?fechaIda={y}-{m}-{d}'
-        print(f'  Navigating: {url}')
+    print(f'Pagina caricata, oggi catturato. Avanzo di {days_needed-1} giorni...')
+
+    for i in range(days_needed - 1):
         try:
-            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            # Clicca freccia avanti >
+            next_btn = page.locator('button:has-text(">"), [aria-label*="siguiente"], [aria-label*="next"]').first
+            if not next_btn.count():
+                # Prova con SVG o altri selettori
+                next_btn = page.locator('.date-nav button:last-child, .calendar-nav button:last-child').first
+            next_btn.click(timeout=5000)
+            print(f'  Click giorno +{i+1}')
+            time.sleep(3)
         except Exception as e:
-            print(f'  Goto error: {e}')
-        time.sleep(4)
+            print(f'  Click error giorno +{i+1}: {e}')
 
     browser.close()
 
-print(f'\nCapturati {len(all_captured)} giorni: {list(all_captured.keys())}')
+print(f'\nCapturati {len(captured)} giorni: {list(captured.keys())}')
 
-for fecha, data in all_captured.items():
-    parts = fecha.split('/')
-    if len(parts) == 3:
-        date_key = fecha
-        result['days'][date_key] = data
-        ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
-        vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
-        print(f'  OK: {date_key} - {ida} corse andata, {vuelta} ritorno')
+for fecha, data in captured.items():
+    result['days'][fecha] = data
+    ida = len((data.get('horariosIda') or [{}])[0].get('horarios', []))
+    vuelta = len((data.get('horariosVuelta') or [{}])[0].get('horarios', []))
+    print(f'  OK: {fecha} - {ida} corse andata, {vuelta} ritorno')
 
 with open('orari.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
-giorni = len(result['days'])
-print(f'Salvato orari.json con {giorni} giorni')
+print(f'Salvato orari.json con {len(result["days"])} giorni')
